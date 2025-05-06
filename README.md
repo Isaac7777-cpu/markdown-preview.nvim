@@ -32,3 +32,9 @@ Install using the nvim as
     end,
 }
 ```
+
+---
+
+## Acknowledge
+
+This repository has taken inspiration from [this great repository](https://github.com/ellisonleao/glow.nvim) which has unfortunately been archived by the owner recently.
