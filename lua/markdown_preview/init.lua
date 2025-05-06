@@ -84,49 +84,36 @@ function M.preview_popup()
 end
 
 function M.preview_hover_doc()
-	local clients = vim.lsp.get_clients({ bufnr = 0 }) or {}
-	local tried = 0
-	local found = false
+  local client = vim.lsp.get_clients({ bufnr = 0 })[1]
+  local encoding = client and client.offset_encoding or "utf-16"
+  local params = vim.lsp.util.make_position_params(0, encoding)
 
-	if #clients == 0 then
-		vim.notify("No LSP clients attached to this buffer.", vim.log.levels.WARN)
-		return
-	end
+  vim.lsp.buf_request_all(0, "textDocument/hover", params, function(results)
+    for client_id, res in pairs(results) do
+      local result = res.result
+      if result and result.contents then
+        local lines = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
+        lines = vim.lsp.util.trim_empty_lines(lines)
 
-	for _, client in ipairs(clients) do
-		if client.supports_method("textDocument/hover") then
-			local encoding = client.offset_encoding or "utf-16"
-			local params = vim.lsp.util.make_position_params(0, encoding)
+        -- fallback if markdown_lines is empty
+        if vim.tbl_isempty(lines) and type(result.contents) == "table" and result.contents.value then
+          lines = vim.split(result.contents.value, "\n", { trimempty = true })
+        end
 
-			vim.lsp.buf_request(client.id, "textDocument/hover", params, function(err, result)
-				tried = tried + 1
+        if not vim.tbl_isempty(lines) then
+          local tmpfile = vim.fn.tempname() .. ".md"
+          local fd = assert(io.open(tmpfile, "w"))
+          fd:write(table.concat(lines, "\n"))
+          fd:close()
 
-				if not found and result and result.contents then
-					local lines = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
-					lines = vim.split(table.concat(lines, "\n"), "\n", { trimempty = true })
+          M.preview_popup_file(tmpfile)
+          return
+        end
+      end
+    end
 
-					if not vim.tbl_isempty(lines) then
-						found = true -- suppress further attempts or warnings
-
-						-- Save to temp file
-						local tmpfile = vim.fn.tempname() .. ".md"
-						local fd = assert(io.open(tmpfile, "w"))
-						fd:write(table.concat(lines, "\n"))
-						fd:close()
-
-						M.preview_popup_file(tmpfile)
-					end
-				end
-
-				-- All clients tried and still nothing → show warning once
-				if tried == #clients and not found then
-					vim.notify("No hover content available from any LSP.", vim.log.levels.INFO)
-				end
-			end)
-		else
-			tried = tried + 1
-		end
-	end
+    vim.notify("No hover content available from any LSP.", vim.log.levels.INFO)
+  end)
 end
 
 -- Create 3 separate commands
