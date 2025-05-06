@@ -1,5 +1,7 @@
 local M = {}
 
+M.version = "0.1.0-alpha"
+
 -- Helper: Write buffer to tempfile
 local function write_tempfile()
 	local tmpfile = vim.fn.tempname() .. ".md"
