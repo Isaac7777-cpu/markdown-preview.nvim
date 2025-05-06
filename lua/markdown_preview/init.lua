@@ -84,36 +84,36 @@ function M.preview_popup()
 end
 
 function M.preview_hover_doc()
-  local client = vim.lsp.get_clients({ bufnr = 0 })[1]
-  local encoding = client and client.offset_encoding or "utf-16"
-  local params = vim.lsp.util.make_position_params(0, encoding)
+	local client = vim.lsp.get_clients({ bufnr = 0 })[1]
+	local encoding = client and client.offset_encoding or "utf-16"
+	local params = vim.lsp.util.make_position_params(0, encoding)
 
-  vim.lsp.buf_request_all(0, "textDocument/hover", params, function(results)
-    for client_id, res in pairs(results) do
-      local result = res.result
-      if result and result.contents then
-        local lines = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
-        lines = vim.lsp.util.trim_empty_lines(lines)
+	vim.lsp.buf_request_all(0, "textDocument/hover", params, function(results)
+		for client_id, res in pairs(results) do
+			local result = res.result
+			if result and result.contents then
+				local lines = vim.lsp.util.convert_input_to_markdown_lines(result.contents)
+				lines = vim.split(table.concat(lines, "\n"), "\n", { trimempty = true })
 
-        -- fallback if markdown_lines is empty
-        if vim.tbl_isempty(lines) and type(result.contents) == "table" and result.contents.value then
-          lines = vim.split(result.contents.value, "\n", { trimempty = true })
-        end
+				-- fallback if markdown_lines is empty
+				if vim.tbl_isempty(lines) and type(result.contents) == "table" and result.contents.value then
+					lines = vim.split(result.contents.value, "\n", { trimempty = true })
+				end
 
-        if not vim.tbl_isempty(lines) then
-          local tmpfile = vim.fn.tempname() .. ".md"
-          local fd = assert(io.open(tmpfile, "w"))
-          fd:write(table.concat(lines, "\n"))
-          fd:close()
+				if not vim.tbl_isempty(lines) then
+					local tmpfile = vim.fn.tempname() .. ".md"
+					local fd = assert(io.open(tmpfile, "w"))
+					fd:write(table.concat(lines, "\n"))
+					fd:close()
 
-          M.preview_popup_file(tmpfile)
-          return
-        end
-      end
-    end
+					M.preview_popup_file(tmpfile)
+					return
+				end
+			end
+		end
 
-    vim.notify("No hover content available from any LSP.", vim.log.levels.INFO)
-  end)
+		vim.notify("No hover content available from any LSP.", vim.log.levels.INFO)
+	end)
 end
 
 -- Create 3 separate commands
