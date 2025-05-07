@@ -1,6 +1,6 @@
 # 📄 markdown-preview.nvim
 
-A minimal Neovim plugin to preview Markdown files in a terminal split using [`glow`](https://github.com/charmbracelet/glow). Designed for speed, simplicity, and seamless Lazy.nvim integration.
+A minimal Neovim plugin to preview Markdown files in a terminal split using [`glow`](https://github.com/charmbracelet/glow). Designed for speed, simplicity, and seamless Lazy.nvim integration. The goals is for me to quickly view the documentation instead of used as a markdown previewer as one would use as if the vscode in-built markdown.
 
 ---
 
