@@ -21,17 +21,102 @@ local function setup_preview_buffer(bufnr, close_cmd)
 	})
 end
 
+-- Get terminal capability (terminfo) via tput, with fallback
+local function termcap(names, fallback)
+	for _, name in ipairs(type(names) == "table" and names or { names }) do
+		local out = vim.fn.system({ "tput", "-T", vim.env.TERM or "", name })
+		if vim.v.shell_error == 0 and type(out) == "string" and #out > 0 then
+			out = out:gsub("\r", ""):gsub("\n", "")
+			if #out > 0 then
+				return out
+			end
+		end
+	end
+	return fallback
+end
+
+local ESC = string.char(27)
+local KEY = {
+	LEFT = termcap({ "kcub1", "kLFT" }, ESC .. "[D"),
+	RIGHT = termcap({ "kcuf1", "kRIT" }, ESC .. "[C"),
+	UP = termcap({ "kcuu1", "kUP" }, ESC .. "[A"),
+	DOWN = termcap({ "kcud1", "kDN" }, ESC .. "[B"),
+	PAGEUP = termcap("kpp", ESC .. "[5~"),
+	PAGEDOWN = termcap("knp", ESC .. "[6~"),
+}
+
+-- Only send to the pager if the cursor is on the visible window edge
+local function map_normal_passthrough_guarded(term_buf, job_id)
+	local function at_top()
+		return vim.api.nvim_win_get_cursor(0)[1] == vim.fn.line("w0")
+	end
+	local function at_bottom()
+		return vim.api.nvim_win_get_cursor(0)[1] == vim.fn.line("w$")
+	end
+	local function at_left()
+		return vim.fn.virtcol(".") == 1
+	end
+	local function at_right()
+		return vim.fn.virtcol(".") >= vim.api.nvim_win_get_width(0)
+	end
+
+	local function expr_send(pred, bytes, fallback_keys)
+		return function()
+			if pred() then
+				vim.fn.jobsend(job_id, bytes)
+				return ""
+			end
+			return fallback_keys
+		end
+	end
+
+	local o = { buffer = term_buf, noremap = true, silent = true, nowait = true, expr = true }
+
+	-- vertical motion
+	vim.keymap.set("n", "j", expr_send(at_bottom, "j", "j"), o)
+	vim.keymap.set("n", "k", expr_send(at_top, "k", "k"), o)
+	vim.keymap.set("n", "<Down>", expr_send(at_bottom, KEY.DOWN, "<Down>"), o)
+	vim.keymap.set("n", "<Up>", expr_send(at_top, KEY.UP, "<Up>"), o)
+
+	-- horizontal pan
+	vim.keymap.set("n", "h", expr_send(at_left, KEY.LEFT, "h"), o)
+	vim.keymap.set("n", "l", expr_send(at_right, KEY.RIGHT, "l"), o)
+	vim.keymap.set("n", "<Left>", expr_send(at_left, KEY.LEFT, "<Left>"), o)
+	vim.keymap.set("n", "<Right>", expr_send(at_right, KEY.RIGHT, "<Right>"), o)
+
+	-- page/half-page (only when at vertical borders)
+	vim.keymap.set("n", "<PageDown>", expr_send(at_bottom, KEY.PAGEDOWN, "<PageDown>"), o)
+	vim.keymap.set("n", "<PageUp>", expr_send(at_top, KEY.PAGEUP, "<PageUp>"), o)
+	vim.keymap.set("n", "<C-d>", expr_send(at_bottom, "\004", "<C-d>"), o) -- ^D
+	vim.keymap.set("n", "<C-u>", expr_send(at_top, "\025", "<C-u>"), o) -- ^U
+end
+
 -- Core terminal previewer
 local function run_glow(term_buf, filepath)
 	vim.api.nvim_buf_set_option(term_buf, "filetype", "")
 	pcall(vim.treesitter.stop, term_buf)
-	vim.fn.termopen({ "glow", filepath }, {
+	vim.bo[term_buf].scrollback = 100000 -- keep lots of history
+
+	-- -p: use pager, defaults to less if $PAGER unset
+	-- -w 1200: prevent glow from re-wrapping to a narrow width
+	local cmd = { "glow", "-p", "-w", "0", filepath }
+
+	local job_id = vim.fn.termopen(cmd, {
+		env = { PAGER = "less -RS" }, -- R: keep colors, S: chop (h-scroll with ←/→)
 		on_exit = function(_, code)
 			if code ~= 0 then
 				vim.api.nvim_err_writeln("glow exited with code " .. code)
 			end
 		end,
 	})
+	-- IMPORTANT: make sure the numbers/signs aren’t stealing columns
+	local win = vim.api.nvim_get_current_win()
+	vim.wo[win].number = false
+	vim.wo[win].relativenumber = false
+	vim.wo[win].signcolumn = "no"
+	vim.wo[win].foldcolumn = "0"
+
+	map_normal_passthrough_guarded(term_buf, job_id)
 end
 
 -- Split preview
